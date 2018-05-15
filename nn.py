@@ -21,11 +21,11 @@ x = tf.placeholder(dtype = tf.float32, shape = [None, n_params])
 y = tf.placeholder(dtype = tf.int32, shape = [None, 1])
 
 learning_rate = 0.3
-epochs = 10
+epochs = 100000
 batch_size = 100
-hidden_layer1 = 15
+hidden_layer_size = 15
 
-hl1 = tf.layers.dense(x, hidden_layer1, kernel_initializer=tf.zeros_initializer(), activation=tf.nn.sigmoid)
+hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.zeros_initializer(), activation=tf.nn.sigmoid)
 y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.zeros_initializer(), activation=tf.nn.sigmoid)
 loss = tf.losses.sigmoid_cross_entropy(y, y_)
 optimiser = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(loss)
@@ -39,7 +39,7 @@ with tf.Session() as sess:
     acc = sess.run(accuracy, feed_dict={x:x_test, y:y_test.reshape(-1,1)})
     print("Initial prediction error on test data: ", 100*acc, "%")
     c = 1
-    for i in range(100000):
+    for i in range(epochs):
         _, c = sess.run([optimiser, loss], 
                      feed_dict={x: x_train, y: y_train.reshape(-1,1)})
         if (i%1000 == 0):
