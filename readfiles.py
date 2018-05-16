@@ -5,10 +5,9 @@ import numpy as np
 
 noise_files = glob.glob("C1/*")
 signal_files = glob.glob("IFAR8/*")
-params = ["netcc", "rho", "netED", "norm"]
-cols = ["netED","norm","rho0","rho1","netcc0","netcc1","label"]
+params = ["rho","norm","netcc","snr"]
+cols = ["filename","norm","rho0", "rho1","snr0","snr1","netcc0","netcc1","label"]
 
-n_params = len(cols)
 data = []
 
 for file in signal_files:
@@ -24,7 +23,7 @@ for file in signal_files:
                 if name == "netcc":
                     tmp = d[i].split()[1:3]
                 line = np.append(line, tmp)
-        data.append(np.append(line, [1]))
+        data.append([file] + list(line) + [1])
 for file in noise_files:
     with open(file, "r") as f:
         d = f.readlines()
@@ -38,7 +37,7 @@ for file in noise_files:
                 if name == "netcc":
                     tmp = d[i].split()[1:3]
                 line = np.append(line, tmp)
-        data.append(np.append(line, [0]))
+        data.append([file] + list(line) + [0])
 
 df = pd.DataFrame(data, columns=cols)
 df = shuffle(df).reset_index(drop=True)
@@ -46,5 +45,5 @@ df = shuffle(df).reset_index(drop=True)
 df_train = df.iloc[:int(len(df)/2)].reset_index(drop=True)
 df_test = df.iloc[int(len(df)/2):].reset_index(drop=True)
 
-df_test.to_csv("test_data.csv", index=False)
-df_train.to_csv("train_data.csv", index=False)
+df_test.to_csv("5params_test_data.csv", index=False)
+df_train.to_csv("5params_train_data.csv", index=False)
