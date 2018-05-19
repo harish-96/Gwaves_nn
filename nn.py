@@ -5,8 +5,8 @@ from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 
 
-testdata = "5params_test_data.csv"
-traindata = "5params_train_data.csv"
+testdata = "7params_test_data.csv"
+traindata = "7params_train_data.csv"
 
 df_train = pd.read_csv(traindata)
 df_test = pd.read_csv(testdata)
@@ -21,7 +21,7 @@ y_train = df_train[cols[-1]].as_matrix().astype(int)
 x = tf.placeholder(dtype = tf.float32, shape = [None, n_params])
 y = tf.placeholder(dtype = tf.int32, shape = [None, 1])
 
-learning_rate = 0.5
+learning_rate = 0.001
 epochs = 100000
 batch_size = 100
 hidden_layer_size = 15
@@ -29,7 +29,7 @@ hidden_layer_size = 15
 hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
 y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
 loss = tf.losses.sigmoid_cross_entropy(y, y_)
-optimiser = tf.train.AdamOptimizer().minimize(loss)
+optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 output = tf.cast(y_ + 0.5, tf.int32)
 correct_prediction = tf.add(tf.multiply(output, y), tf.multiply(1-output, 1-y))
@@ -68,8 +68,14 @@ print("Model saved in path: %s" % save_path)
 
 sess.close()
 
-plt.semilogy(fp['snr0'], label="False Postives")
-plt.semilogy(fn['snr0'], label="False Negatives")
-plt.ylabel("SNR")
+plt.hist(fp['snr0'], label="False Postives")
+plt.hist(fn['snr0'], alpha=0.5, label="False Negatives")
+plt.xlabel("SNR")
+plt.legend()
+plt.show()
+
+plt.hist(np.log10(signal['snr0']), label="Signal")
+plt.hist(np.log10(noise['snr0']), alpha=0.7, label="Noise")
+plt.xlabel("$log_{10}(SNR)$")
 plt.legend()
 plt.show()
