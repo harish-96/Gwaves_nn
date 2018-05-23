@@ -12,19 +12,22 @@ df_train = pd.read_csv(traindata)
 df_train_weak = df_train.loc[df_train['snr0'] < 200].reset_index(drop=True)
 df_test = pd.read_csv(testdata)
 df_test_weak = df_test.loc[df_test['snr0'] < 200].reset_index(drop=True)
-cols = pd.read_csv(traindata, nrows=1).columns
-n_params = len(cols)-2
+cols = list(pd.read_csv(traindata, nrows=1).columns)[1:]
+# cols = cols[:6] + cols[10:]
+# cols = ['netED', 'norm', 'rho0', 'rho1', 'duration0', 'duration1', 'freq0', 'freq1','snr0','snr1','netcc0', 'netcc1', 'label']
+# cols = ['freq0', 'rho1', 'label']
+n_params = len(cols)-1
 
-x_test = df_test_weak[cols[1:-1]].as_matrix()
+x_test = df_test_weak[cols[:-1]].as_matrix()
 y_test = df_test_weak[cols[-1]].as_matrix().astype(int)
-x_train = df_train_weak[cols[1:-1]].as_matrix()
+x_train = df_train_weak[cols[:-1]].as_matrix()
 y_train = df_train_weak[cols[-1]].as_matrix().astype(int)
 
 x = tf.placeholder(dtype = tf.float32, shape = [None, n_params])
 y = tf.placeholder(dtype = tf.int32, shape = [None, 1])
 
 learning_rate = 0.001
-epochs = 100000
+epochs = 50000
 batch_size = 100
 hidden_layer_size = 15
 
@@ -77,16 +80,33 @@ noise_all = noise_all.reset_index(drop=True)
 save_path = saver.save(sess, "checkpoints/model.ckpt")
 print("Model saved in path: %s" % save_path)
 
-sess.close()
+weights = tf.get_default_graph().get_tensor_by_name(hl1.name.split('/')[0]+'/kernel:0')
+weights2 = tf.get_default_graph().get_tensor_by_name(y_.name.split('/')[0]+'/kernel:0')
+w = sess.run(weights)
+w2 = sess.run(weights2)
 
-plt.hist(fp['snr0'], label="False Postives")
-plt.hist(fn['snr0'], alpha=0.5, label="False Negatives")
-plt.xlabel("SNR")
+opt = sess.run(y_, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
+cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
+plt.hist(opt[np.where(cp == 0)], 50,log=True); plt.show()
+
+# sess.close()
+
+plt.hist(fp['rho1'], label="False Postives")
+plt.hist(fn['rho1'], alpha=0.5, label="False Negatives")
+plt.xlabel("$\\rho$")
 plt.legend()
 plt.show()
 
-plt.hist(np.log10(signal_test_weak['snr0']), label="Signal")
-plt.hist(np.log10(noise_test_weak['snr0']), alpha=0.7, label="Noise")
-plt.xlabel("$log_{10}(SNR)$")
+plt.hist((signal_test_weak['rho1']), label="Signal")
+plt.hist((noise_test_weak['rho1']), alpha=0.7, label="Noise")
+plt.xlabel("$\\rho$")
 plt.legend()
+plt.show()
+
+plt.matshow(w, cmap=plt.cm.Spectral_r, interpolation='none')
+plt.colorbar()
+plt.show()
+
+plt.matshow(w2, cmap=plt.cm.Spectral_r, interpolation='none')
+plt.colorbar()
 plt.show()
