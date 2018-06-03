@@ -6,27 +6,28 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 
 
-plot_dir = 'allparams_nocut_plot2/'
+plot_dir = 'stats_plots4/'
 column_names = {0:'lag', 1:'slag', 2:'rho0', 3:'rho1', 4:'netcc0', 5:'netcc2', 6:'penalty', 7:'netED', 8:'likelihood', 9:'duration', 10:'frequency1', 11:'frequency2', 12:'Qveto', 13:'Lveto', 14:'chirp1', 15:'chirp2', 16:'strain', 17:'hrssL', 18:'hrssH', 19:'SNR1'}
 column_numbers = dict((v,k) for k,v in column_names.items())
 cols = list(column_numbers) + ['label', 'index', 'false_alarms']
 X_signal = sio.loadmat('data/simulation_R3_space.mat')['data']
+X_signal = X_signal[np.where(X_signal[:, 3] > 10)]
 X_signal = np.append(X_signal, np.ones((len(X_signal), 1)), 1)
+X_signal = X_signal[~np.isnan(X_signal).any(axis=1)]
 X_noise = sio.loadmat('data/R3_cWB_BKG_with_qveto_gp3_dp2.mat')['data']
 X_noise = np.append(X_noise, np.zeros((len(X_noise), 1)), 1)
+X_noise = X_noise[~np.isnan(X_noise).any(axis=1)]
 X = np.append(X_signal, X_noise, 0)
-X = X[~np.isnan(X).any(axis=1)]
 X = np.concatenate([X, np.arange(len(X)).reshape(-1,1), np.array([['']]*len(X))], 1)
 
-cols_used = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 16, 17, 18, 19]
+cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 14, 15, 16, 17, 18, 19]
 n_params = len(cols_used)
 learning_rate = 0.001
-epochs = 50000
-batch_size = 100
+epochs = 40000
 hidden_layer_size = 20
-n_stats = 5
+n_stats = 100
 
-for i in range(n_stats):
+for it in range(n_stats):
     X = shuffle(X)
 
     x_test = X[:int(len(X)/2), cols_used].astype(float)
@@ -39,7 +40,9 @@ for i in range(n_stats):
 
     hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
     y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
-    loss = tf.losses.sigmoid_cross_entropy(y, y_)
+    # loss = tf.losses.sigmoid_cross_entropy(y, y_)
+    y_temp = tf.cast(y, tf.float32)
+    loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 1000*(1-y_temp) * tf.log(1-y_ + 1e-20))
     optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
     output = tf.cast(y_ + 0.5, tf.int32)
@@ -51,55 +54,78 @@ for i in range(n_stats):
 
     sess.run(tf.global_variables_initializer())
     acc = sess.run(accuracy, feed_dict={x:x_test, y:y_test.reshape(-1,1)})
-    print("Initial prediction accuracy on test data: ", 100*acc, "%")
+    print("Training ", str(it))
     c = 1
-    convergence = range(10)
+    convergence = list(range(7))
     for i in range(epochs):
         _, c = sess.run([optimiser, loss], 
                      feed_dict={x: x_train, y: y_train.reshape(-1,1)})
+        if(np.isnan(c)):
+            print("Nan encountered")
+            break
         if (i%1000 == 0):
             acc = sess.run(accuracy,
                            feed_dict={x: x_train, y: y_train.reshape(-1,1)})
-            convergence.append(acc)
+            convergence.append(c)
             convergence = convergence[1:]
+            if i%10000 == 0:
+                print("\tLoss = ", c, ", Prediction accuracy = ", 100*acc, "%")
             if np.all(convergence == convergence[0]):
                 break
-            print("Loss = ", c, ", Prediction accuracy = ", 100*acc, "%")
-    acc = sess.run(accuracy, feed_dict={x:x_test, y:y_test.reshape(-1,1)})
+            if (convergence[-1] > 100 * convergence[-2] and it > n_stats / 2): 
+                for tmp in range(10000):
+                    _, c = sess.run([optimiser, loss], 
+                                 feed_dict={x: x_train, y: y_train.reshape(-1,1)})
+
+    c, acc = sess.run([loss, accuracy], feed_dict={x:x_test, y:y_test.reshape(-1,1)})
+    if(np.isnan(c)):
+        print("Nan encountered")
+        continue
     pred = sess.run(output, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
     prob = sess.run(y_, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
     cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
-    print("Prediction accuracy on test data: ", 100*acc, "%")
 
-    x_test_all = X[:int(len(X)/2), :]
-    x_train_all = X[int(len(X)/2):, :]
-
-    test_signal = x_test_all[np.where(y_test == 1)]
-    test_noise = x_test_all[np.where(y_test == 0)]
-
-    save_path = saver.save(sess, "checkpoints/model.ckpt")
-    print("Model saved in path: %s" % save_path)
-
-    # weights = tf.get_default_graph().get_tensor_by_name(hl1.name.split('/')[0]+'/kernel:0')
-    # weights2 = tf.get_default_graph().get_tensor_by_name(y_.name.split('/')[0]+'/kernel:0')
-    # w = sess.run(weights)
-    # w2 = sess.run(weights2)
+    # save_path = saver.save(sess, "checkpoints/model" + str(it) + ".ckpt")
+    # print("Model saved in path: %s" % save_path)
 
     sess.close()
+    indices = np.where((pred - y_test) == 1)[0]
+    print("\tTest Accuracy: ", 100*acc, "%", "FAR: ", 100*len(indices)/len(np.where(y_test==0)[0]), "%")
+    for i in indices:
+        if X[i, -1] == '':
+            X[i, -1] = str(it)
+        else:
+            X[i, -1] = ','.join([X[i, -1], str(it)])
 
-    X[np.where((pred - y_test) == 1)[0], -1] += str(i)
-    # fp = x_test_all[np.where((pred - y_test) == 1)[0], :]
-    # fn = x_test_all[np.where((pred - y_test) == -1)[0], :]
+sio.savemat(plot_dir + 'stats_new.mat', {'data':X})
+idx = np.where(X[:, -1] != '')[0]
+if len(idx) > 0:
+    tmp = np.concatenate([np.tile(X[i,:], [len(X[i, -1].split(',')), 1]) for i in idx])
 
-    # for i in range(len(column_names)):
-    #      plt.hist(test_signal[:,i], log=True, label="Signal")
-    #      plt.hist(test_noise[:,i], log=True, alpha=0.7, label="Noise")
-    #      plt.hist(fp[:, i], log=True, alpha=0.5, label="False positives")
-    #      plt.hist(fn[:, i], log=True, alpha=0.5, label="False negatives")
-    #      plt.legend()
-    #      plt.xlabel(column_names[i])
-    #      plt.savefig(plot_dir + column_names[i] +".png")
-    #      plt.clf()
+    for i in range(len(column_names)):
+         plt.hist(X_signal[:,i], log=True, label="Signal")
+         plt.hist(X_noise[:,i], log=True, alpha=0.7, label="Noise")
+         plt.hist(tmp[:, i].astype(float), log=True, alpha=0.7, label="False positives")
+         plt.legend()
+         plt.xlabel(column_names[i])
+         plt.savefig(plot_dir + column_names[i] +".png")
+         plt.clf()
+
+    scatter = ['netcc0', 'netcc2', 'Qveto', 'Lveto', 'rho0', 'lag', 'chirp1']
+    for i in scatter:
+        for j in scatter:
+            plt.scatter(X[idx, column_numbers[i]], X[idx, column_numbers[j]])
+    for i in scatter:
+        for j in scatter:
+            if i != j:                                               
+                plt.scatter(X[idx, column_numbers[i]].astype(float), 
+                            X[idx, column_numbers[j]].astype(float),
+                             s=[10*len(i.split(',')) for i in X[idx, -1]])
+                plt.xlabel(i)
+                plt.ylabel(j)
+                plt.savefig(plot_dir + i + 'vs' + j +".png")
+                plt.clf()
+                 
      
     # if(acc != 1):
     #     plt.hist(fp[:, column_numbers['rho1']], label="False Postives")
