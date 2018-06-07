@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 
 
-plot_dir = 'final/'
+plot_dir = 'results/run0/'
 column_names = {0:'lag', 1:'slag', 2:'rho0', 3:'rho1', 4:'netcc0', 5:'netcc2', 6:'penalty', 7:'netED', 8:'likelihood', 9:'duration', 10:'frequency1', 11:'frequency2', 12:'Qveto', 13:'Lveto', 14:'chirp1', 15:'chirp2', 16:'strain', 17:'hrssL', 18:'hrssH', 19:'SNR1'}
 column_numbers = dict((v,k) for k,v in column_names.items())
 cols = list(column_numbers) + ['label', 'index', 'false_alarms']
@@ -23,9 +23,9 @@ X = np.concatenate([X, np.array([['']]*len(X))], 1)
 cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 14, 15, 16, 17, 18, 19]
 n_params = len(cols_used)
 learning_rate = 0.001
-epochs = 50000
+epochs = 1000
 hidden_layer_size = 30
-n_stats = 100
+n_stats = 1
 
 with tf.variable_scope("model", reuse=tf.AUTO_REUSE) as scope:
     x = tf.placeholder(dtype = tf.float32, shape = [None, n_params], name='input')
@@ -82,7 +82,7 @@ for it in range(n_stats):
     prob = sess.run(y_, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
     cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
 
-    save_path = saver.save(sess, "tmp/model" + str(it) + ".ckpt")
+    save_path = saver.save(sess, "checkpoints/model" + str(it) + ".ckpt")
     print("Model saved in path: %s" % save_path)
 
     sess.close()
