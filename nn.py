@@ -5,8 +5,8 @@ from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 
 
-testdata = "7params_test_data.csv"
-traindata = "7params_train_data.csv"
+testdata = "data/7params_test_data.csv"
+traindata = "data/7params_train_data.csv"
 
 df_train = pd.read_csv(traindata)
 df_train_weak = df_train.loc[df_train['snr0'] < 200].reset_index(drop=True)
@@ -27,13 +27,14 @@ x = tf.placeholder(dtype = tf.float32, shape = [None, n_params])
 y = tf.placeholder(dtype = tf.int32, shape = [None, 1])
 
 learning_rate = 0.001
-epochs = 50000
+epochs = 75000
 batch_size = 100
-hidden_layer_size = 15
+hidden_layer_size = 30
 
 hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
 y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
-loss = tf.losses.sigmoid_cross_entropy(y, y_)
+y_temp = tf.cast(y, tf.float32)
+loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 1000*(1-y_temp) * tf.log(1-y_ + 1e-20))
 optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 output = tf.cast(y_ + 0.5, tf.int32)
@@ -90,23 +91,27 @@ cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).
 plt.hist(opt[np.where(cp == 0)], 50,log=True); plt.show()
 
 # sess.close()
+savedir = 'results/c3ifar8/'
 
 plt.hist(fp['rho1'], label="False Postives")
 plt.hist(fn['rho1'], alpha=0.5, label="False Negatives")
 plt.xlabel("$\\rho$")
 plt.legend()
-plt.show()
+plt.savefig(savedir + 'fpfn.png')
+plt.clf()
 
 plt.hist((signal_test_weak['rho1']), label="Signal")
 plt.hist((noise_test_weak['rho1']), alpha=0.7, label="Noise")
 plt.xlabel("$\\rho$")
 plt.legend()
-plt.show()
+plt.savefig(savedir + 'rho.png')
+plt.clf()
 
-plt.matshow(w, cmap=plt.cm.Spectral_r, interpolation='none')
-plt.colorbar()
-plt.show()
 
-plt.matshow(w2, cmap=plt.cm.Spectral_r, interpolation='none')
-plt.colorbar()
-plt.show()
+# plt.matshow(w, cmap=plt.cm.Spectral_r, interpolation='none')
+# plt.colorbar()
+# plt.show()
+
+# plt.matshow(w2, cmap=plt.cm.Spectral_r, interpolation='none')
+# plt.colorbar()
+# plt.show()
