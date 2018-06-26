@@ -5,8 +5,8 @@ from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 
 
-testdata = "data/7params_test_data.csv"
-traindata = "data/7params_train_data.csv"
+testdata = "data/12params_test_data.csv"
+traindata = "data/12params_train_data.csv"
 
 df_train = pd.read_csv(traindata)
 df_train_weak = df_train.loc[df_train['snr0'] < 200].reset_index(drop=True)
@@ -23,30 +23,30 @@ y_test = df_test_weak[cols[-1]].as_matrix().astype(int)
 x_train = df_train_weak[cols[:-1]].as_matrix()
 y_train = df_train_weak[cols[-1]].as_matrix().astype(int)
 
-x = tf.placeholder(dtype = tf.float32, shape = [None, n_params])
-y = tf.placeholder(dtype = tf.int32, shape = [None, 1])
-
 learning_rate = 0.001
-epochs = 75000
-batch_size = 100
+epochs = 100000
 hidden_layer_size = 30
 
-hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
-y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
-y_temp = tf.cast(y, tf.float32)
-loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 1000*(1-y_temp) * tf.log(1-y_ + 1e-20))
-optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+with tf.variable_scope("model", reuse=tf.AUTO_REUSE) as scope:
+    x = tf.placeholder(dtype = tf.float32, shape = [None, n_params], name='input')
+    y = tf.placeholder(dtype = tf.int32, shape = [None, 1], name='label')
 
-output = tf.cast(y_ + 0.5, tf.int32)
-correct_prediction = tf.add(tf.multiply(output, y), tf.multiply(1-output, 1-y))
-accuracy = tf.reduce_mean(tf.to_float(correct_prediction))
+    hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
+    y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid, name='prob')
+    y_temp = tf.cast(y, tf.float32)
+    loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 1000*(1-y_temp) * tf.log(1-y_ + 1e-20))
+    optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+
+    output = tf.cast(y_ + 0.5, tf.int32, name='pred')
+    correct_prediction = tf.add(tf.multiply(output, y), tf.multiply(1-output, 1-y), name='cp')
+    accuracy = tf.reduce_mean(tf.to_float(correct_prediction))
 
 saver = tf.train.Saver()
 sess = tf.Session()
 
 sess.run(tf.global_variables_initializer())
 acc = sess.run(accuracy, feed_dict={x:x_test, y:y_test.reshape(-1,1)})
-print("Initial prediction error on test data: ", 100*acc, "%")
+print("Initial prediction accuracy on test data: ", 100*acc, "%")
 c = 1
 for i in range(epochs):
     _, c = sess.run([optimiser, loss], 
@@ -54,11 +54,11 @@ for i in range(epochs):
     if (i%1000 == 0):
         acc = sess.run(accuracy,
                        feed_dict={x: x_train, y: y_train.reshape(-1,1)})
-        print("Loss = ", c, ", Prediction error = ", 100*acc, "%")
+        print("Loss = ", c, ", Prediction accuracy = ", 100*acc, "%")
 # import pdb; pdb.set_trace()
 acc = sess.run(accuracy, feed_dict={x:x_test, y:y_test.reshape(-1,1)})
 pred = sess.run(output, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
-print("Prediction Error on test data: ", 100*acc, "%")
+print("Prediction accuracy on test data: ", 100*acc, "%")
 
 false_positives = df_test_weak.as_matrix()[np.where((pred - y_test) == 1)[0]][:, 0]
 false_negatives = df_test_weak.as_matrix()[np.where((pred - y_test) == -1)[0]][:, 0]
@@ -81,17 +81,11 @@ noise_all = noise_all.reset_index(drop=True)
 save_path = saver.save(sess, "checkpoints/model.ckpt")
 print("Model saved in path: %s" % save_path)
 
-weights = tf.get_default_graph().get_tensor_by_name(hl1.name.split('/')[0]+'/kernel:0')
-weights2 = tf.get_default_graph().get_tensor_by_name(y_.name.split('/')[0]+'/kernel:0')
-w = sess.run(weights)
-w2 = sess.run(weights2)
-
 opt = sess.run(y_, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
 cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
-plt.hist(opt[np.where(cp == 0)], 50,log=True); plt.show()
 
 # sess.close()
-savedir = 'results/c3ifar8/'
+savedir = 'results/'
 
 plt.hist(fp['rho1'], label="False Postives")
 plt.hist(fn['rho1'], alpha=0.5, label="False Negatives")

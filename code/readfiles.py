@@ -45,5 +45,5 @@ df = shuffle(df).reset_index(drop=True)
 df_train = df.iloc[:int(len(df)/2)].reset_index(drop=True)
 df_test = df.iloc[int(len(df)/2):].reset_index(drop=True)
 
-df_test.to_csv("data/7params_test_data.csv", index=False)
-df_train.to_csv("data/7params_train_data.csv", index=False)
+df_test.to_csv("data/12params_test_data.csv", index=False)
+df_train.to_csv("data/12params_train_data.csv", index=False)
