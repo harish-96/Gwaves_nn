@@ -4,9 +4,13 @@ import numpy as np
 from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 import scipy.io as sio
+import os
 
+plot_dir = 'results/tmp1/'
+ckpts = plot_dir + "checkpoints/"
+if not os.path.exists(ckpts):
+    os.makedirs(ckpts)
 
-plot_dir = 'results/run0/'
 column_names = {0:'lag', 1:'slag', 2:'rho0', 3:'rho1', 4:'netcc0', 5:'netcc2', 6:'penalty', 7:'netED', 8:'likelihood', 9:'duration', 10:'frequency1', 11:'frequency2', 12:'Qveto', 13:'Lveto', 14:'chirp1', 15:'chirp2', 16:'strain', 17:'hrssL', 18:'hrssH', 19:'SNR1'}
 column_numbers = dict((v,k) for k,v in column_names.items())
 cols = list(column_numbers) + ['label', 'index', 'false_alarms']
@@ -14,16 +18,17 @@ X_signal = sio.loadmat('data/simulation_R3_space.mat')['data']
 X_signal = X_signal[np.where(X_signal[:, 3] > 10)]
 X_signal = np.append(X_signal, np.ones((len(X_signal), 1)), 1)
 X_signal = X_signal[~np.isnan(X_signal).any(axis=1)]
-X_noise = sio.loadmat('data/R3_cWB_BKG_with_qveto_gp3_dp2.mat')['data']
+X_noise = sio.loadmat('data/R3_cWB_BBH_BKG_with_rho_g6cor.mat')['data']
+# X_noise = sio.loadmat('data/R3_cWB_BKG_with_qveto_gp3_dp2.mat')['data']
 X_noise = np.append(X_noise, np.zeros((len(X_noise), 1)), 1)
 X_noise = X_noise[~np.isnan(X_noise).any(axis=1)]
 X = np.append(X_signal, X_noise, 0)
 X = np.concatenate([X, np.array([['']]*len(X))], 1)
 
-cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 14, 15, 16, 17, 18, 19]
+cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 n_params = len(cols_used)
-learning_rate = 0.001
-epochs = 1000
+learning_rate = 0.003
+epochs = 1500
 hidden_layer_size = 30
 n_stats = 1
 
@@ -69,7 +74,7 @@ for it in range(n_stats):
                            feed_dict={x: x_train, y: y_train.reshape(-1,1)})
             convergence.append(c)
             convergence = convergence[1:]
-            if i%5000 == 0:
+            if i%1000 == 0:
                 print("\tLoss = ", c, ", Prediction accuracy = ", 100*acc, "%")
             if np.all(convergence == convergence[0]):
                 break
@@ -82,7 +87,7 @@ for it in range(n_stats):
     prob = sess.run(y_, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
     cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
 
-    save_path = saver.save(sess, "checkpoints/model" + str(it) + ".ckpt")
+    save_path = saver.save(sess, ckpts + "/model" + str(it) + ".ckpt")
     print("Model saved in path: %s" % save_path)
 
     sess.close()
