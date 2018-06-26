@@ -7,6 +7,7 @@ import scipy.io as sio
 import sys
 
 model_loc = sys.argv[1]
+print(model_loc + '.meta')
 saver = tf.train.import_meta_graph(model_loc + '.meta')
 with tf.Session() as sess:
     saver.restore(sess, model_loc)
@@ -14,7 +15,7 @@ with tf.Session() as sess:
     x = graph.get_tensor_by_name('Placeholder:0')
     y = graph.get_tensor_by_name('Placeholder_1:0')
     output = graph.get_tensor_by_name('Cast_1:0')
-    data1 = sio.loadmat('R3_cWB_BBH_BKG_with_rho_g6cor.mat')['data']
+    data1 = sio.loadmat('data/R3_cWB_BBH_BKG_with_rho_g6cor.mat')['data']
     data1 = data1[~np.isnan(data1).any(axis=1)]
     cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 14, 15, 16, 17, 18, 19]
     pred = sess.run(output, feed_dict={x:data1[:, cols_used]}).reshape(-1)
