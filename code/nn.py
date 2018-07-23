@@ -1,3 +1,5 @@
+
+#Importing required modules
 import tensorflow as tf
 import pandas as pd
 import numpy as np
@@ -6,39 +8,64 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import os
 
-plot_dir = 'results/tmp1/'
+# Directories to store plots and checkpoints
+plot_dir = 'results/train_no_cuts/'
 ckpts = plot_dir + "checkpoints/"
 if not os.path.exists(ckpts):
     os.makedirs(ckpts)
 
+# Input data path on disk
+signal_path = 'data/simulation_R3_space.mat'
+noise_path = 'data/R3_cWB_BBH_BKG_with_rho_g6cor.mat'
+# noise_path = 'data/R3_cWB_BKG_with_qveto_gp3_dp2.mat'
+
+# The following columns are present in the input data. Edit only if the input structure is changed
 column_names = {0:'lag', 1:'slag', 2:'rho0', 3:'rho1', 4:'netcc0', 5:'netcc2', 6:'penalty', 7:'netED', 8:'likelihood', 9:'duration', 10:'frequency1', 11:'frequency2', 12:'Qveto', 13:'Lveto', 14:'chirp1', 15:'chirp2', 16:'strain', 17:'hrssL', 18:'hrssH', 19:'SNR1'}
 column_numbers = dict((v,k) for k,v in column_names.items())
-cols = list(column_numbers) + ['label', 'index', 'false_alarms']
-X_signal = sio.loadmat('data/simulation_R3_space.mat')['data']
-X_signal = X_signal[np.where(X_signal[:, 3] > 10)]
-X_signal = np.append(X_signal, np.ones((len(X_signal), 1)), 1)
+
+cols = list(column_numbers) + ['label', 'false_alarms']
+
+# Loading signal and noise data
+X_signal = sio.loadmat(signal_path)['data']
+X_noise = sio.loadmat(noise_path)['data']
+
+# Chosing only those events with rho1 > 10 and removing events with NaNs
+X_signal = X_signal[np.where(X_signal[:, column_numbers['rho1']] > 10)]
 X_signal = X_signal[~np.isnan(X_signal).any(axis=1)]
-X_noise = sio.loadmat('data/R3_cWB_BBH_BKG_with_rho_g6cor.mat')['data']
-# X_noise = sio.loadmat('data/R3_cWB_BKG_with_qveto_gp3_dp2.mat')['data']
-X_noise = np.append(X_noise, np.zeros((len(X_noise), 1)), 1)
 X_noise = X_noise[~np.isnan(X_noise).any(axis=1)]
+
+# Adding labels (1 for signal and 0 for noise)
+X_signal = np.append(X_signal, np.ones((len(X_signal), 1)), 1)
+X_noise = np.append(X_noise, np.zeros((len(X_noise), 1)), 1)
+
+# Concatenating the labeled data. The last column of this 2D array keeps track of the number of times an event is misclassified
 X = np.append(X_signal, X_noise, 0)
 X = np.concatenate([X, np.array([['']]*len(X))], 1)
 
+# Parameters which input to the network
 cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 n_params = len(cols_used)
-learning_rate = 0.003
-epochs = 1500
-hidden_layer_size = 30
-n_stats = 1
 
+# Training hyperparameters, network size and number of training runs over which statistics are collected
+learning_rate = 0.003
+epochs = 30000
+hidden_layer_size = 30
+n_stats = 50
+
+
+# Building the tensorflow computational graph
+# x and y : input data and labels
+# hl1: Hidden layer's output
+# y_: Network output in [0, 1]
+# loss: Cross entropy cost
+# output: Binary network output obtained after thresholding y_ at 0.5
+# correct_prediction: equals 1 for correctly classified event and 0 for misclassified event
 with tf.variable_scope("model", reuse=tf.AUTO_REUSE) as scope:
     x = tf.placeholder(dtype = tf.float32, shape = [None, n_params], name='input')
     y = tf.placeholder(dtype = tf.int32, shape = [None, 1], name='label')
 
     hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
     y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid, name='prob')
-    # loss = tf.losses.sigmoid_cross_entropy(y, y_)
     y_temp = tf.cast(y, tf.float32)
     loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 1000*(1-y_temp) * tf.log(1-y_ + 1e-20))
     optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
@@ -48,50 +75,56 @@ with tf.variable_scope("model", reuse=tf.AUTO_REUSE) as scope:
     accuracy = tf.reduce_mean(tf.to_float(correct_prediction))
 
 
+# Performing multiple training runs on the computational graph built above. This is to obtain statistics
 for it in range(n_stats):
     X = shuffle(X)
 
+    # Test and train data separation (50-50)
     x_test = X[:int(len(X)/2), cols_used].astype(float)
     y_test = X[:int(len(X)/2), -2].astype(float)
     x_train = X[int(len(X)/2):, cols_used].astype(float)
     y_train = X[int(len(X)/2):, -2].astype(float)
 
-    saver = tf.train.Saver()
+    # Begin TensorFlow session
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
     acc = sess.run(accuracy, feed_dict={x:x_test, y:y_test.reshape(-1,1)})
     print("Training ", str(it))
-    c = 1
+
+    # Convergence check. If the loss does not change in 7000 iterations, stop training.
     convergence = list(range(7))
     for i in range(epochs):
         _, c = sess.run([optimiser, loss], 
                      feed_dict={x: x_train, y: y_train.reshape(-1,1)})
-        if(np.isnan(c)):
-            print("Nan encountered")
-            break
         if (i%1000 == 0):
             acc = sess.run(accuracy,
                            feed_dict={x: x_train, y: y_train.reshape(-1,1)})
+            #FIFO queue
             convergence.append(c)
             convergence = convergence[1:]
-            if i%1000 == 0:
-                print("\tLoss = ", c, ", Prediction accuracy = ", 100*acc, "%")
+
+            #Print current state
+            print("\tLoss = ", c, ", Prediction accuracy = ", 100*acc, "%")
             if np.all(convergence == convergence[0]):
                 break
 
+    # Feed test data to trained network
     c, acc = sess.run([loss, accuracy], feed_dict={x:x_test, y:y_test.reshape(-1,1)})
-    if(np.isnan(c)):
-        print("Nan encountered")
-        continue
     pred = sess.run(output, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
     prob = sess.run(y_, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
     cp = sess.run(correct_prediction, feed_dict={x:x_test, y:y_test.reshape(-1,1)}).reshape(-1)
 
+    # Save trained model
+    saver = tf.train.Saver()
     save_path = saver.save(sess, ckpts + "/model" + str(it) + ".ckpt")
     print("Model saved in path: %s" % save_path)
 
+    # End TensorFlow session
     sess.close()
+
+    # Indices of false alarm events
     indices = np.where((pred - y_test) == 1)[0]
+
     print("\tTest Accuracy: ", 100*acc, "%", "FAR: ", 100*len(indices)/len(np.where(y_test==0)[0]), "%")
     for i in indices:
         if X[i, -1] == '':
