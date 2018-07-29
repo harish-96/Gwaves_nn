@@ -7,4 +7,4 @@ To train a new model, you'll need to edit the file nn.py
 To use an existing model to run predictions on new data, you'll need to edit reuse_model.py
 1. Set the variable data1 to the path of the unlabelled input data
 2. Set cols_used to reflect the cWB parameters used in training
-3. The python script needs to be run along with the location of the checkpoint file as a command line argument. For instance, if you'd like to use a checkpoint named model5 located at resuls/rho_g8_no_chirp/model5.ckpt.meta you'll have to use the following call "python code/reuse_model.py results/rho_g8_no_chirp/model5.ckpt"
+3. The python script needs to be run along with the location of the checkpoint file as a command line argument. For instance, if you'd like to use a checkpoint named model5 located at resuls/rho_g8_no_chirp/model5.ckpt.meta you'll have to use the following call `python code/reuse_model.py results/rho_g8_no_chirp/model5.ckpt`
