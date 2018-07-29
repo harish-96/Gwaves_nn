@@ -9,15 +9,15 @@ import scipy.io as sio
 import os
 
 # Directories to store plots and checkpoints
-plot_dir = 'results/train_no_cuts/'
+plot_dir = 'results/tmptmp/'
 ckpts = plot_dir + "checkpoints/"
 if not os.path.exists(ckpts):
     os.makedirs(ckpts)
 
 # Input data path on disk
 signal_path = 'data/simulation_R3_space.mat'
-noise_path = 'data/R3_cWB_BBH_BKG_with_rho_g6cor.mat'
-# noise_path = 'data/R3_cWB_BKG_with_qveto_gp3_dp2.mat'
+# noise_path = 'data/R3_cWB_BBH_BKG_with_rho_g6cor.mat'
+noise_path = 'data/R3_cWB_BKG_with_qveto_gp3_dp2.mat'
 
 # The following columns are present in the input data. Edit only if the input structure is changed
 column_names = {0:'lag', 1:'slag', 2:'rho0', 3:'rho1', 4:'netcc0', 5:'netcc2', 6:'penalty', 7:'netED', 8:'likelihood', 9:'duration', 10:'frequency1', 11:'frequency2', 12:'Qveto', 13:'Lveto', 14:'chirp1', 15:'chirp2', 16:'strain', 17:'hrssL', 18:'hrssH', 19:'SNR1'}
@@ -30,7 +30,7 @@ X_signal = sio.loadmat(signal_path)['data']
 X_noise = sio.loadmat(noise_path)['data']
 
 # Chosing only those events with rho1 > 10 and removing events with NaNs
-X_signal = X_signal[np.where(X_signal[:, column_numbers['rho1']] > 10)]
+X_signal = X_signal[np.where(X_signal[:, column_numbers['rho1']] > 8)]
 X_signal = X_signal[~np.isnan(X_signal).any(axis=1)]
 X_noise = X_noise[~np.isnan(X_noise).any(axis=1)]
 
@@ -43,14 +43,14 @@ X = np.append(X_signal, X_noise, 0)
 X = np.concatenate([X, np.array([['']]*len(X))], 1)
 
 # Parameters which input to the network
-cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+cols_used = [2, 3, 4, 5, 6, 7, 8, 10, 11, 16, 17, 18, 19]
 n_params = len(cols_used)
 
 # Training hyperparameters, network size and number of training runs over which statistics are collected
-learning_rate = 0.003
+learning_rate = 0.001
 epochs = 30000
 hidden_layer_size = 30
-n_stats = 50
+n_stats = 1
 
 
 # Building the tensorflow computational graph
@@ -67,7 +67,7 @@ with tf.variable_scope("model", reuse=tf.AUTO_REUSE) as scope:
     hl1 = tf.layers.dense(x, hidden_layer_size, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid)
     y_ = tf.layers.dense(hl1, 1, kernel_initializer=tf.truncated_normal_initializer(), activation=tf.nn.sigmoid, name='prob')
     y_temp = tf.cast(y, tf.float32)
-    loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 1000*(1-y_temp) * tf.log(1-y_ + 1e-20))
+    loss = -tf.reduce_sum(y_temp * tf.log(y_ + 1e-20) + 100*(1-y_temp) * tf.log(1-y_ + 1e-20))
     optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
     output = tf.cast(y_ + 0.5, tf.int32, name='pred')
@@ -96,7 +96,7 @@ for it in range(n_stats):
     for i in range(epochs):
         _, c = sess.run([optimiser, loss], 
                      feed_dict={x: x_train, y: y_train.reshape(-1,1)})
-        if (i%1000 == 0):
+        if (i%10000 == 0):
             acc = sess.run(accuracy,
                            feed_dict={x: x_train, y: y_train.reshape(-1,1)})
             #FIFO queue
@@ -132,15 +132,17 @@ for it in range(n_stats):
         else:
             X[i, -1] = ','.join([X[i, -1], str(it)])
 
-sio.savemat(plot_dir + 'stats_new.mat', {'data':X})
+sio.savemat(plot_dir + 'stats.mat', {'data':X})
 idx = np.where(X[:, -1] != '')[0]
+
+# Plotting
 if len(idx) > 0:
     tmp = np.concatenate([np.tile(X[i,:], [len(X[i, -1].split(',')), 1]) for i in idx])
 
     for i in range(len(column_names)):
          plt.hist(X_signal[:,i], log=True, label="Signal")
          plt.hist(X_noise[:,i], log=True, alpha=0.7, label="Noise")
-         plt.hist(tmp[:, i].astype(float), log=True, alpha=0.7, label="False positives")
+         plt.hist(tmp[:, i].astype(float), weights=0.01*np.ones(tmp[:, i].shape), log=True, alpha=0.7, label="False positives")
          plt.legend()
          plt.xlabel(column_names[i])
          plt.savefig(plot_dir + column_names[i] +".png")
@@ -165,12 +167,5 @@ if len(idx) > 0:
     # plt.xlabel("Confidence")
     # plt.legend()
     # plt.savefig(plot_dir + "confidence_newdata.png")
-    # plt.clf()
-
-    # plt.hist((test_signal[:, column_numbers['rho1']]), label="Signal")
-    # plt.hist((test_noise[:, column_numbers['rho1']]), alpha=0.7, label="Noise")
-    # plt.xlabel("$\\rho$")
-    # plt.legend()
-    # plt.savefig("fpfn_newdata.png")
     # plt.clf()
 
